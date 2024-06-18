@@ -4,7 +4,9 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-bevy = "0.13.2"
+bevy = "0.13"
+bevy_svg = { version = "0.13", git = "https://github.com/arnfaldur/bevy_svg.git" }
+strum = { version = "0.26", features = ["derive"] }
 
 [features]
 default = ["dynamic_linking"]
