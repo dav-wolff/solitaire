@@ -96,7 +96,6 @@
 				
 				solitaire = craneLib.buildPackage (commonArgs // {
 					inherit cargoArtifacts;
-					
 					SOLITAIRE_CARDS_LOCATION = cards;
 					
 					postFixup = lib.optionalString pkgs.stdenv.isLinux ''
@@ -112,10 +111,12 @@
 				checks = {
 					test = craneLib.cargoTest (commonArgs // {
 						inherit cargoArtifacts;
+						SOLITAIRE_CARDS_LOCATION = cards;
 					});
 					
 					clippy = craneLib.cargoClippy (commonArgs // {
 						inherit cargoArtifacts;
+						SOLITAIRE_CARDS_LOCATION = cards;
 						cargoClippyExtraArgs = "--all-targets -- --deny warnings";
 					});
 				};
