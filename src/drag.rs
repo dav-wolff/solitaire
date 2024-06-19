@@ -1,4 +1,6 @@
-use bevy::{input::common_conditions::{input_just_pressed, input_just_released}, prelude::*, render::primitives::Aabb, window::PrimaryWindow};
+use bevy::{input::common_conditions::{input_just_pressed, input_just_released}, prelude::*, render::primitives::Aabb, utils::FloatOrd, window::PrimaryWindow};
+
+const CURSOR_Z: f32 = 500.0;
 
 #[derive(Component, Debug)]
 pub struct Draggable;
@@ -26,9 +28,9 @@ struct DragAttach;
 fn setup(mut commands: Commands) {
 	commands.spawn((
 		Cursor,
-		TransformBundle {
-			local: Transform {
-				translation: Vec3::new(0.0, 0.0, 500.0),
+		SpatialBundle {
+			transform: Transform {
+				translation: Vec3::new(0.0, 0.0, CURSOR_Z),
 				..Default::default()
 			},
 			..Default::default()
@@ -37,7 +39,7 @@ fn setup(mut commands: Commands) {
 		.with_children(|parent| {
 			parent.spawn((
 				DragAttach,
-				TransformBundle::default(),
+				SpatialBundle::default(),
 			));
 		});
 }
@@ -61,7 +63,7 @@ fn update_cursor(
 	cursor_transform.translation = Vec3 {
 		x: position.x,
 		y: position.y,
-		z: 0.0,
+		z: CURSOR_Z,
 	};
 }
 
@@ -77,26 +79,33 @@ fn drag(
 	draggable: Query<(Entity, &Parent, &GlobalTransform, &Aabb), With<Draggable>>,
 ) {
 	let cursor_transform = cursor.single();
+	let cursor_translation = cursor_transform.translation;
 	let (drag_attach, mut drag_attach_transform) = drag_attach.single_mut();
 	
-	for (entity, parent, transform, aabb) in draggable.iter() {
-		let relative_translation = cursor_transform.translation.truncate() - transform.translation().truncate();
-		if relative_translation.x < -aabb.half_extents.x
-			|| relative_translation.y < -aabb.half_extents.y
-			|| relative_translation.x > aabb.half_extents.x
-			|| relative_translation.y > aabb.half_extents.y
-		{
-			continue;
-		}
-		
-		drag_attach_transform.translation = -relative_translation.extend(0.0);
-		
-		commands.entity(entity).insert(Dragging {
-			previous_parent: parent.get(),
-		});
-		
-		commands.entity(drag_attach).push_children(&[entity]);
-	}
+	let Some((entity, parent, relative_translation, _)) = draggable.iter()
+		.map(|(entity, parent, transform, aabb)| {
+			let relative_translation = cursor_translation - transform.translation();
+			(entity, parent, dbg!(relative_translation), aabb)
+		})
+		.filter(|(_, _, relative_translation, aabb)| {
+			relative_translation.x > -aabb.half_extents.x
+				&& relative_translation.y > -aabb.half_extents.y
+				&& relative_translation.x < aabb.half_extents.x
+				&& relative_translation.y < aabb.half_extents.y
+		})
+		.max_by_key(|(_, _, relative_translation, _)| FloatOrd(-relative_translation.z))
+	else {
+		return;
+	};
+	
+	drag_attach_transform.translation = -relative_translation;
+	drag_attach_transform.translation.z = 0.0;
+	
+	commands.entity(entity).insert(Dragging {
+		previous_parent: parent.get(),
+	});
+	
+	commands.entity(drag_attach).push_children(&[entity]);
 }
 
 fn drop(

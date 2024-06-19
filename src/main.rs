@@ -54,12 +54,12 @@ fn spawn_cards(mut commands: Commands, card_assets: Res<CardAssets>) {
 		
 		let translation = Vec3 {
 			x: x as f32 * 200.0 - 6.0 * 200.0,
-			y: y as f32 * 380.0 - 1.5 * 380.0,
-			z: 0.0,
+			y: y as f32 * 250.0 - 1.5 * 380.0,
+			z: y as f32,
 		};
 		
-		commands.spawn(TransformBundle {
-			local: Transform {
+		commands.spawn(SpatialBundle {
+			transform: Transform {
 				translation,
 				..Default::default()
 			},
