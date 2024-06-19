@@ -1,5 +1,6 @@
 #![forbid(unsafe_code)]
 #![deny(non_snake_case)]
+#![allow(clippy::type_complexity)]
 
 use bevy::{prelude::*, render::camera::ScalingMode};
 use bevy_svg::prelude::*;

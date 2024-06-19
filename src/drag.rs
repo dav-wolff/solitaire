@@ -1,5 +1,8 @@
 use bevy::{input::common_conditions::{input_just_pressed, input_just_released}, prelude::*, render::primitives::Aabb, window::PrimaryWindow};
 
+#[derive(Component, Debug)]
+pub struct Draggable;
+
 #[derive(Debug)]
 pub struct DragPlugin;
 
@@ -14,6 +17,12 @@ impl Plugin for DragPlugin {
 	}
 }
 
+#[derive(Component, Debug)]
+struct Cursor;
+
+#[derive(Component, Debug)]
+struct DragAttach;
+
 fn setup(mut commands: Commands) {
 	commands.spawn((
 		Cursor,
@@ -24,11 +33,14 @@ fn setup(mut commands: Commands) {
 			},
 			..Default::default()
 		},
-	));
+	))
+		.with_children(|parent| {
+			parent.spawn((
+				DragAttach,
+				TransformBundle::default(),
+			));
+		});
 }
-
-#[derive(Component, Debug)]
-struct Cursor;
 
 fn update_cursor(
 	window: Query<&Window, With<PrimaryWindow>>,
@@ -54,35 +66,36 @@ fn update_cursor(
 }
 
 #[derive(Component, Debug)]
-pub struct Draggable;
-
-#[derive(Component, Debug)]
-pub struct Dragging {
+struct Dragging {
 	previous_parent: Entity,
 }
 
 fn drag(
 	mut commands: Commands,
-	cursor: Query<(Entity, &Transform), With<Cursor>>,
+	cursor: Query<&Transform, With<Cursor>>,
+	mut drag_attach: Query<(Entity, &mut Transform), (With<DragAttach>, Without<Cursor>)>,
 	draggable: Query<(Entity, &Parent, &GlobalTransform, &Aabb), With<Draggable>>,
 ) {
-	let (cursor, cursor_transform) = cursor.single();
+	let cursor_transform = cursor.single();
+	let (drag_attach, mut drag_attach_transform) = drag_attach.single_mut();
 	
 	for (entity, parent, transform, aabb) in draggable.iter() {
-		let relative_transform = cursor_transform.translation.truncate() - transform.translation().truncate();
-		if relative_transform.x < -aabb.half_extents.x
-			|| relative_transform.y < -aabb.half_extents.y
-			|| relative_transform.x > aabb.half_extents.x
-			|| relative_transform.y > aabb.half_extents.y
+		let relative_translation = cursor_transform.translation.truncate() - transform.translation().truncate();
+		if relative_translation.x < -aabb.half_extents.x
+			|| relative_translation.y < -aabb.half_extents.y
+			|| relative_translation.x > aabb.half_extents.x
+			|| relative_translation.y > aabb.half_extents.y
 		{
 			continue;
 		}
+		
+		drag_attach_transform.translation = -relative_translation.extend(0.0);
 		
 		commands.entity(entity).insert(Dragging {
 			previous_parent: parent.get(),
 		});
 		
-		commands.entity(cursor).push_children(&[entity]);
+		commands.entity(drag_attach).push_children(&[entity]);
 	}
 }
 
