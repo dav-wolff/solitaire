@@ -29,7 +29,7 @@ pub enum Value {
 	King,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+#[derive(Component, Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub struct Card {
 	pub suit: Suit,
 	pub value: Value,

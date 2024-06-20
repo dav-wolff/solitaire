@@ -1,20 +1,51 @@
-use bevy::{input::common_conditions::{input_just_pressed, input_just_released}, prelude::*, render::primitives::Aabb, utils::FloatOrd, window::PrimaryWindow};
+use bevy::{ecs::query::QuerySingleError, input::common_conditions::{input_just_pressed, input_just_released}, prelude::*, render::primitives::Aabb, utils::FloatOrd, window::PrimaryWindow};
 
 const CURSOR_Z: f32 = 500.0;
 
 #[derive(Component, Debug)]
 pub struct Draggable;
 
+#[derive(Component, Debug)]
+pub struct DropTarget;
+
+#[derive(Event, Debug)]
+pub struct DropEvent {
+	dropped: Entity,
+	target: Entity,
+	previous_parent: Entity,
+}
+
+impl DropEvent {
+	pub fn dropped(&self) -> Entity {
+		self.dropped
+	}
+	
+	pub fn target(&self) -> Entity {
+		self.target
+	}
+	
+	pub fn attach_to_target(&self, commands: &mut Commands) {
+		commands.entity(self.target).push_children(&[self.dropped]);
+	}
+	
+	pub fn return_to_parent(&self, commands: &mut Commands) {
+		commands.entity(self.previous_parent).push_children(&[self.dropped]);
+	}
+}
+
 #[derive(Debug)]
 pub struct DragPlugin;
 
 impl Plugin for DragPlugin {
 	fn build(&self, app: &mut App) {
-		app.add_systems(Startup, setup)
-			.add_systems(PreUpdate, update_cursor)
+		app.add_event::<DropEvent>()
+			.add_systems(Startup, setup)
+			.add_systems(PreUpdate, (
+				update_cursor,
+				drop.run_if(input_just_released(MouseButton::Left)),
+			).chain())
 			.add_systems(Update, (
 				drag.run_if(input_just_pressed(MouseButton::Left)),
-				drop.run_if(input_just_released(MouseButton::Left)),
 			));
 	}
 }
@@ -76,29 +107,24 @@ fn drag(
 	mut commands: Commands,
 	cursor: Query<&Transform, With<Cursor>>,
 	mut drag_attach: Query<(Entity, &mut Transform), (With<DragAttach>, Without<Cursor>)>,
-	draggable: Query<(Entity, &Parent, &GlobalTransform, &Aabb), With<Draggable>>,
+	draggable: Query<(Entity, &Parent, &Transform, &GlobalTransform, &Aabb), (With<Draggable>, Without<Cursor>, Without<DragAttach>)>,
 ) {
 	let cursor_transform = cursor.single();
 	let cursor_translation = cursor_transform.translation;
 	let (drag_attach, mut drag_attach_transform) = drag_attach.single_mut();
 	
-	let Some((entity, parent, relative_translation, _)) = draggable.iter()
-		.map(|(entity, parent, transform, aabb)| {
-			let relative_translation = cursor_translation - transform.translation();
-			(entity, parent, dbg!(relative_translation), aabb)
+	let Some((entity, parent, transform, relative_translation, _)) = draggable.iter()
+		.map(|(entity, parent, transform, global_transform, aabb)| {
+			let relative_translation = cursor_translation - global_transform.translation();
+			(entity, parent, transform, relative_translation, aabb)
 		})
-		.filter(|(_, _, relative_translation, aabb)| {
-			relative_translation.x > -aabb.half_extents.x
-				&& relative_translation.y > -aabb.half_extents.y
-				&& relative_translation.x < aabb.half_extents.x
-				&& relative_translation.y < aabb.half_extents.y
-		})
-		.max_by_key(|(_, _, relative_translation, _)| FloatOrd(-relative_translation.z))
+		.filter(|(_, _, _, relative_translation, aabb)| inside_bounding_box(relative_translation.truncate(), **aabb))
+		.max_by_key(|(_, _, _, relative_translation, _)| FloatOrd(-relative_translation.z))
 	else {
 		return;
 	};
 	
-	drag_attach_transform.translation = -relative_translation;
+	drag_attach_transform.translation = -relative_translation - transform.translation;
 	drag_attach_transform.translation.z = 0.0;
 	
 	commands.entity(entity).insert(Dragging {
@@ -110,10 +136,43 @@ fn drag(
 
 fn drop(
 	mut commands: Commands,
+	mut event_writer: EventWriter<DropEvent>,
+	cursor: Query<&Transform, With<Cursor>>,
 	dragging: Query<(Entity, &Dragging)>,
+	drop_targets: Query<(Entity, &GlobalTransform, &Aabb), (With<DropTarget>, Without<Dragging>)>,
 ) {
-	for (entity, Dragging {previous_parent}) in dragging.iter() {
-		commands.entity(*previous_parent).push_children(&[entity]);
-		commands.entity(entity).remove::<Dragging>();
-	}
+	let (dropped, Dragging {previous_parent}) = match dragging.get_single() {
+		Ok(dragging) => dragging,
+		Err(QuerySingleError::NoEntities(_)) => return,
+		Err(QuerySingleError::MultipleEntities(_)) => panic!("There should be at most one Dragging"),
+	};
+	
+	let previous_parent = *previous_parent;
+	let cursor_translation = cursor.single().translation.truncate();
+	
+	commands.entity(dropped).remove::<Dragging>();
+	
+	let Some((target, _, _)) = drop_targets.iter()
+		.filter(|(_, transform, aabb)| {
+			let relative_translation = cursor_translation - transform.translation().truncate();
+			inside_bounding_box(relative_translation, **aabb)
+		})
+		.max_by_key(|(_, transform, _)| FloatOrd(transform.translation().z))
+	else {
+		commands.entity(previous_parent).push_children(&[dropped]);
+		return;
+	};
+	
+	event_writer.send(DropEvent {
+		dropped,
+		target,
+		previous_parent,
+	});
+}
+
+fn inside_bounding_box(position: Vec2, aabb: Aabb) -> bool {
+	position.x > -aabb.half_extents.x
+		&& position.y > -aabb.half_extents.y
+		&& position.x < aabb.half_extents.x
+		&& position.y < aabb.half_extents.y
 }
