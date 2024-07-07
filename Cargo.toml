@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-bevy = "0.13"
+bevy = { version = "0.13", features = ["wayland"] }
 bevy_svg = { version = "0.13", git = "https://github.com/arnfaldur/bevy_svg.git" }
 strum = { version = "0.26", features = ["derive"] }
 

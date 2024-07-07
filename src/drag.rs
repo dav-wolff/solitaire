@@ -42,11 +42,9 @@ impl Plugin for DragPlugin {
 			.add_systems(Startup, setup)
 			.add_systems(PreUpdate, (
 				update_cursor,
-				drop.run_if(input_just_released(MouseButton::Left)),
-			).chain())
-			.add_systems(Update, (
 				drag.run_if(input_just_pressed(MouseButton::Left)),
-			));
+				drop.run_if(input_just_released(MouseButton::Left)),
+			).chain());
 	}
 }
 

@@ -65,7 +65,7 @@ fn asset_path(path: &Path, card: Card) -> PathBuf {
 	path.join(format!("{value_char}{suit_char}.svg"))
 }
 
-fn load_assets(path: &Path, asset_server: &AssetServer) -> HashMap<Card, Handle<Svg>> {
+fn load_card_assets(path: &Path, asset_server: &AssetServer) -> HashMap<Card, Handle<Svg>> {
 	Suit::iter()
 		.flat_map(|suit| {
 			Value::iter()
@@ -79,11 +79,18 @@ fn load_assets(path: &Path, asset_server: &AssetServer) -> HashMap<Card, Handle<
 }
 
 #[derive(Resource, Debug)]
-pub struct CardAssets(HashMap<Card, Handle<Svg>>);
+pub struct CardAssets {
+	cards: HashMap<Card, Handle<Svg>>,
+	slot: Handle<Svg>,
+}
 
 impl CardAssets {
 	pub fn get(&self, card: Card) -> Handle<Svg> {
-		self.0.get(&card).cloned().expect("All possible cards have been inserted")
+		self.cards.get(&card).cloned().expect("All possible cards have been inserted")
+	}
+	
+	pub fn slot(&self) -> Handle<Svg> {
+		self.slot.clone()
 	}
 }
 
@@ -92,7 +99,13 @@ pub struct CardAssetsPlugin(pub PathBuf);
 impl Plugin for CardAssetsPlugin {
 	fn build(&self, app: &mut App) {
 		let asset_server: &AssetServer = app.world.get_resource().expect("AssetServer must be initialized");
-		let card_assets = CardAssets(load_assets(&self.0, asset_server));
+		let slot_asset = asset_server.load(self.0.join("slot.svg"));
+		
+		let card_assets = CardAssets {
+			cards: load_card_assets(&self.0, asset_server),
+			slot: slot_asset,
+		};
+		
 		app.insert_resource(card_assets);
 	}
 }
