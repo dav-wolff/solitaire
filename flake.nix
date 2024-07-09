@@ -19,17 +19,11 @@
 		};
 	};
 	
-	outputs = {self, nixpkgs, flake-utils, crane, fenix}: {
-		overlays = {
-			svg-playing-cards = final: prev: {
-				svg-playing-cards = prev.callPackage ./nix/svg_playing_cards.nix {};
-			};
-			
-			craneLib = final: prev: let
-				fenixPackage = fenix.packages.${prev.system};
-				fenixNative = fenixPackage.complete; # nightly
-				fenixWasm = fenixPackage.targets.wasm32-unknown-unknown.latest; # nightly
-				fenixToolchain = fenixPackage.combine [
+	outputs = { self, nixpkgs, flake-utils, ... } @ inputs: let
+		makeCraneLib = pkgs: let
+				fenixNative = pkgs.fenix.complete; # nightly
+				fenixWasm = pkgs.fenix.targets.wasm32-unknown-unknown.latest; # nightly
+				fenixToolchain = pkgs.fenix.combine [
 					fenixNative.rustc
 					fenixNative.rust-src
 					fenixNative.cargo
@@ -37,24 +31,37 @@
 					fenixNative.clippy
 					fenixWasm.rust-std
 				];
-				craneLib = (crane.mkLib final).overrideToolchain fenixToolchain;
-			in {
-				inherit craneLib;
+		in (inputs.crane.mkLib pkgs).overrideToolchain fenixToolchain;
+	in {
+		overlays = {
+			svg-playing-cards = final: prev: {
+				svg-playing-cards = prev.callPackage ./nix/svg_playing_cards.nix {};
+			};
+			
+			fenix = final: prev: {
+				fenix = inputs.fenix.packages.${prev.system};
 			};
 			
 			solitaire = final: prev: let
 				inherit (prev) callPackage;
+				craneLib = makeCraneLib final;
 			in {
 				solitaire = {
-					cards = callPackage ./nix/cards.nix {};
-					native = callPackage ./nix/native.nix {};
-					web = callPackage ./nix/web.nix {};
+					cards = callPackage ./nix/cards.nix {
+						inherit craneLib;
+					};
+					native = callPackage ./nix/native.nix {
+						inherit craneLib;
+					};
+					web = callPackage ./nix/web.nix {
+						inherit craneLib;
+					};
 				};
 			};
 			
 			default = nixpkgs.lib.composeManyExtensions (with self.overlays; [
 				svg-playing-cards
-				craneLib
+				fenix
 				solitaire
 			]);
 		};
@@ -64,6 +71,7 @@
 					inherit system;
 					overlays = [self.overlays.default];
 				};
+				craneLib = makeCraneLib pkgs;
 			in {
 				packages = {
 					inherit (pkgs) svg-playing-cards;
@@ -82,7 +90,7 @@
 					);
 				in prefixChecks "native" pkgs.solitaire.native.tests // prefixChecks "web" pkgs.solitaire.web.tests;
 				
-				devShells.default = pkgs.craneLib.devShell {
+				devShells.default = craneLib.devShell {
 					packages = with pkgs; solitaire.native.libraries ++ [
 						rust-analyzer
 						pkg-config

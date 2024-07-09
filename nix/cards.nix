@@ -1,10 +1,13 @@
 { callPackage
 , runCommand
+, craneLib
 , svg-playing-cards
 }:
 
 let
-	common = callPackage ./common.nix {};
+	common = callPackage ./common.nix {
+		inherit craneLib;
+	};
 	inherit (common) pname version;
 in runCommand "${pname}-cards-${version}" {
 	nativeBuildInputs = [svg-playing-cards];

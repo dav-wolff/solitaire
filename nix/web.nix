@@ -5,7 +5,9 @@
 }:
 
 let
-	common = callPackage ./common.nix {};
+	common = callPackage ./common.nix {
+		inherit craneLib;
+	};
 	inherit (common) pname;
 	
 	commonArgs = common.args // {
