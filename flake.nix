@@ -92,7 +92,7 @@
 				
 				devShells.default = craneLib.devShell {
 					packages = with pkgs; solitaire.native.libraries ++ [
-						rust-analyzer
+						fenix.rust-analyzer
 						pkg-config
 						clang
 						mold
