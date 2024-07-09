@@ -4,13 +4,27 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-bevy = { version = "0.13", features = ["wayland"] }
 bevy_svg = { version = "0.13", git = "https://github.com/arnfaldur/bevy_svg.git" }
 strum = { version = "0.26", features = ["derive"] }
 
+[dependencies.bevy]
+version = "0.13"
+default-features = false
+features = [
+	"bevy_asset",
+	"bevy_render",
+	"bevy_winit",
+]
+
 [features]
-default = ["dynamic_linking"]
+default = ["dynamic_linking", "native"]
 dynamic_linking = ["bevy/dynamic_linking"]
+native = [
+	"bevy/multi-threaded",
+	"bevy/x11",
+	"bevy/wayland",
+]
+web = ["bevy/webgl2"]
 
 [profile.dev.package."*"]
 opt-level = 3

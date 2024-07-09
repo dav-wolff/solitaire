@@ -19,134 +19,80 @@
 		};
 	};
 	
-	outputs = {self, nixpkgs, flake-utils, crane, fenix}:
-		flake-utils.lib.eachDefaultSystem (system:
+	outputs = {self, nixpkgs, flake-utils, crane, fenix}: {
+		overlays = {
+			svg-playing-cards = final: prev: {
+				svg-playing-cards = prev.callPackage ./nix/svg_playing_cards.nix {};
+			};
+			
+			craneLib = final: prev: let
+				fenixPackage = fenix.packages.${prev.system};
+				fenixNative = fenixPackage.complete; # nightly
+				fenixWasm = fenixPackage.targets.wasm32-unknown-unknown.latest; # nightly
+				fenixToolchain = fenixPackage.combine [
+					fenixNative.rustc
+					fenixNative.rust-src
+					fenixNative.cargo
+					fenixNative.rust-docs
+					fenixNative.clippy
+					fenixWasm.rust-std
+				];
+				craneLib = (crane.mkLib final).overrideToolchain fenixToolchain;
+			in {
+				inherit craneLib;
+			};
+			
+			solitaire = final: prev: let
+				inherit (prev) callPackage;
+			in {
+				solitaire = {
+					cards = callPackage ./nix/cards.nix {};
+					native = callPackage ./nix/native.nix {};
+					web = callPackage ./nix/web.nix {};
+				};
+			};
+			
+			default = nixpkgs.lib.composeManyExtensions (with self.overlays; [
+				svg-playing-cards
+				craneLib
+				solitaire
+			]);
+		};
+	} // flake-utils.lib.eachDefaultSystem (system:
 			let
 				pkgs = import nixpkgs {
 					inherit system;
+					overlays = [self.overlays.default];
 				};
-				
-				inherit (pkgs) lib;
-				
-				fenixPackage = fenix.packages.${system};
-				fenixToolchain = fenixPackage.default.toolchain; # nightly
-				craneLib = (crane.mkLib pkgs).overrideToolchain fenixToolchain;
-				
-				src = with lib; cleanSourceWith {
-					src = craneLib.path ./.;
-					filter = craneLib.filterCargoSources;
-				};
-				
-				nameVersion = craneLib.crateNameFromCargoToml { cargoToml = ./Cargo.toml; };
-				pname = nameVersion.pname;
-				version = nameVersion.version;
-				
-				svg-playing-cards = pkgs.callPackage ./svg_playing_cards.nix {};
-				cards = pkgs.runCommand "${pname}-${version}-cards" {
-					nativeBuildInputs = [svg-playing-cards];
-				} ''
-					mkdir $out
-					makecards -d $out \
-						--plain \
-						--ace=plain \
-						--ace1="" --ace2="" \
-						--width="56mm" \
-						--height="87mm" \
-						--w=190 \
-						--h=360 \
-						--ph=58 \
-						--corner=12 \
-						--back=Plain \
-						--back-colour=#03a32e \
-						--card=1B
-					mv $out/1B.svg $out/slot.svg
-					makecards -d $out \
-						--plain \
-						--ace=plain \
-						--ace1="" --ace2="" \
-						--width="56mm" \
-						--height="87mm" \
-						--w=190 \
-						--h=360 \
-						--ph=58 \
-						--corner=12
-					rm $out/1B.svg
-					rm $out/2B.svg
-					rm $out/1J.svg
-					rm $out/2J.svg
-				'';
-				
-				libraries = with pkgs; [
-					udev
-					alsa-lib
-					vulkan-loader
-					xorg.libX11
-					xorg.libXcursor
-					xorg.libXi
-					xorg.libXrandr
-					libxkbcommon
-					wayland
-				];
-				
-				commonArgs = {
-					inherit pname version src;
-					strictDeps = true;
-					
-					nativeBuildInputs = with pkgs; [
-						pkg-config
-						clang
-						mold
-					];
-					
-					buildInputs = with pkgs; [
-						alsa-lib.dev
-						wayland
-						udev
-					];
-					
-					cargoExtraArgs = "--locked --no-default-features";
-				};
-				
-				cargoArtifacts = craneLib.buildDepsOnly commonArgs;
-				
-				solitaire = craneLib.buildPackage (commonArgs // {
-					inherit cargoArtifacts;
-					SOLITAIRE_CARDS_LOCATION = cards;
-					
-					postFixup = lib.optionalString pkgs.stdenv.isLinux ''
-						patchelf $out/bin/solitaire --set-rpath ${lib.makeLibraryPath libraries}
-					'';
-				});
 			in {
 				packages = {
-					default = solitaire;
-					inherit svg-playing-cards cards;
-				};
-				
-				checks = {
-					test = craneLib.cargoTest (commonArgs // {
-						inherit cargoArtifacts;
-						SOLITAIRE_CARDS_LOCATION = cards;
-					});
+					inherit (pkgs) svg-playing-cards;
+					inherit (pkgs.solitaire) native web cards;
 					
-					clippy = craneLib.cargoClippy (commonArgs // {
-						inherit cargoArtifacts;
-						SOLITAIRE_CARDS_LOCATION = cards;
-						cargoClippyExtraArgs = "--all-targets -- --deny warnings";
-					});
+					default = pkgs.solitaire.native;
+					
+					serve = pkgs.writeShellScriptBin "solitaire-serve" ''
+						${pkgs.http-server}/bin/http-server ${pkgs.solitaire.web}
+					'';
 				};
 				
-				devShells.default = craneLib.devShell {
-					packages = libraries ++ (with pkgs; [
+				checks = let
+					prefixChecks = prefix: with pkgs.lib; mapAttrs' (name: value:
+						nameValuePair "${prefix}_${name}" value
+					);
+				in prefixChecks "native" pkgs.solitaire.native.tests // prefixChecks "web" pkgs.solitaire.web.tests;
+				
+				devShells.default = pkgs.craneLib.devShell {
+					packages = with pkgs; solitaire.native.libraries ++ [
 						rust-analyzer
 						pkg-config
 						clang
 						mold
-					]);
+					];
 					
-					LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath libraries;
+					LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath pkgs.solitaire.native.libraries;
 					
-					SOLITAIRE_CARDS_LOCATION = cards;
+					SOLITAIRE_CARDS_LOCATION = pkgs.solitaire.cards;
 				};
 			}
 		);

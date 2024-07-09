@@ -4,7 +4,7 @@
 
 use std::collections::VecDeque;
 
-use bevy::{prelude::*, render::camera::ScalingMode};
+use bevy::{asset::AssetMetaCheck, prelude::*, render::camera::ScalingMode};
 use bevy_svg::prelude::*;
 use card::*;
 use drag::{DragPlugin, Draggable, DropEvent, DropTarget};
@@ -14,13 +14,25 @@ mod card;
 mod drag;
 
 fn main() {
+	#[cfg(feature = "native")]
+	let window = Window {
+		title: "Solitaire".into(),
+		resolution: (1300.0, 760.0).into(),
+		..Default::default()
+	};
+	
+	#[cfg(feature = "web")]
+	let window = Window {
+		title: "Solitaire".into(),
+		canvas: option_env!("SOLITAIRE_CANVAS_ID").map(Into::into),
+		prevent_default_event_handling: false,
+		..Default::default()
+	};
+	
 	App::new()
+		.insert_resource(AssetMetaCheck::Never)
 		.add_plugins(DefaultPlugins.set(WindowPlugin {
-			primary_window: Some(Window {
-				title: "Solitaire".into(),
-				resolution: (1300.0, 760.0).into(),
-				..Default::default()
-			}),
+			primary_window: Some(window),
 			..Default::default()
 		}))
 		.add_plugins(bevy_svg::prelude::SvgPlugin)

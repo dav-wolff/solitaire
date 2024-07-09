@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<title>Solitaire</title>
+		<link rel="stylesheet" href="style.css" />
+	</head>
+	<body>
+		<script type="module">
+			import init from "./solitaire.js";
+			
+			init().catch(error => {
+				if (!error.message.startsWith("Using exceptions for control flow, don't mind me. This isn't actually an error!")) {
+					throw error;
+				}
+			});
+		</script>
+		<canvas id="canvas" width="100%" height="100%"></canvas>
+	</body>
+</html>
