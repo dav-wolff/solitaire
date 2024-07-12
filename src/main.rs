@@ -2,15 +2,16 @@
 #![deny(non_snake_case)]
 #![allow(clippy::type_complexity)]
 
-use std::collections::VecDeque;
+use std::{cmp::min, collections::VecDeque, ops::DerefMut};
 
 use bevy::{asset::AssetMetaCheck, prelude::*, render::camera::ScalingMode};
 use bevy_svg::prelude::*;
 use card::*;
+use deck::Deck;
 use drag::{DragPlugin, Draggable, DropEvent, DropTarget};
-use strum::IntoEnumIterator;
 
 mod card;
+mod deck;
 mod drag;
 
 fn main() {
@@ -39,8 +40,12 @@ fn main() {
 		.add_plugins(CardAssetsPlugin(env!("SOLITAIRE_CARDS_LOCATION").into()))
 		.add_plugins(DragPlugin)
 		.add_systems(Startup, (spawn_camera, spawn_cards))
+		.add_systems(PreUpdate, update_stack_children)
 		.add_systems(Update, handle_dropped_card)
-		.add_systems(Update, resize_stack)
+		.add_systems(Update, (
+			resize_stack,
+			make_draggable,
+		))
 		.run();
 }
 
@@ -54,60 +59,53 @@ fn spawn_camera(mut commands: Commands) {
 	commands.spawn(camera);
 }
 
-#[derive(Component, Debug)]
-struct Slot;
+#[derive(Component, Default, Debug)]
+struct Slot {
+	stack: Vec<Entity>,
+}
 
 fn spawn_cards(mut commands: Commands, card_assets: Res<CardAssets>) {
 	let slot_svg = card_assets.slot();
 	
-	for (x, y, suit, value) in Suit::iter()
-		.enumerate()
-		.flat_map(|(y, suit)| {
-			Value::iter()
-				.enumerate()
-				.map(move |(x, value)| (x, y, suit, value))
-		})
-	{
-		let card = Card {
-			suit,
-			value,
-		};
+	let mut deck = Deck::shuffled();
+	
+	for x in 0..10 {
+		let cards_in_slot = min(10 - x, 8);
 		
-		let card_svg = card_assets.get(card);
-		
-		let translation = Vec3 {
-			x: x as f32 * 200.0 - 6.0 * 200.0,
-			y: y as f32 * 380.0 - 1.5 * 380.0,
-			z: 0.0,
-		};
-		
-		commands.spawn((
+		let mut parent = commands.spawn((
 			Svg2dBundle {
-				svg: slot_svg.clone(),
 				transform: Transform {
-					translation,
+					translation: (x as f32 * 250.0 - 4.5 * 250.0, 400.0, 0.0).into(),
 					..Default::default()
 				},
+				svg: slot_svg.clone(),
 				..Default::default()
 			},
 			DropTarget,
-			Slot,
-		))
-			.with_children(|parent| {
-				parent.spawn((
-					Svg2dBundle {
-						svg: card_svg,
-						transform: Transform {
-							translation: Vec3::new(0.0, 0.0, 1.0),
-							..Default::default()
-						},
+			Slot::default(),
+		)).id();
+		
+		for _ in 0..cards_in_slot {
+			let card = deck.draw().expect("This layout shouldn't require more cards than in the deck");
+			let card_svg = card_assets.get(card);
+			
+			let child = commands.spawn((
+				Svg2dBundle {
+					transform: Transform {
+						translation: (0.0, 0.0, 1.0).into(),
 						..Default::default()
 					},
-					Draggable,
-					DropTarget,
-					card,
-				));
-			});
+					svg: card_svg.clone(),
+					..Default::default()
+				},
+				card,
+				Draggable(false),
+				DropTarget,
+			)).id();
+			
+			commands.entity(parent).push_children(&[child]);
+			parent = child;
+		}
 	}
 }
 
@@ -117,20 +115,34 @@ fn handle_dropped_card(
 	cards: Query<&Card>,
 	unoccupied_cards: Query<&Card, Without<Children>>,
 	slots: Query<(), With<Slot>>,
+	mut parents: Query<&mut Parent, With<Card>>,
 ) {
 	for event in event_reader.read() {
 		let Ok(dropped) = cards.get(event.dropped()) else {
 			continue;
 		};
 		
-		if let Ok(target) = unoccupied_cards.get(event.target()) {
-			if dropped.suit == target.suit {
-				event.attach_to_target(&mut commands);
-				continue;
+		let mut attach_to_target = || {
+			event.attach_to_target(&mut commands);
+			
+			if let Ok(mut parent) = parents.get_mut(event.previous_parent()) {
+				// trigger change detection to get previous stack to update
+				parent.deref_mut();
 			}
-		}
+		};
 		
 		if slots.get(event.target()).is_ok() {
+			attach_to_target();
+			continue;
+		}
+		
+		if let Ok(target) = unoccupied_cards.get(event.target()) {
+			if target.value.as_number() != dropped.value.as_number() + 1 {
+				event.return_to_parent(&mut commands);
+				continue;
+			}
+			
+			attach_to_target();
 			event.attach_to_target(&mut commands);
 			continue;
 		}
@@ -139,42 +151,80 @@ fn handle_dropped_card(
 	}
 }
 
-fn resize_stack(
-	dropped_cards: Query<Entity, (With<Card>, Changed<Parent>)>,
-	mut cards: Query<(&mut Transform, &Parent, Option<&Children>), With<Card>>,
-	slots: Query<(), With<Slot>>,
+fn update_stack_children(
+	moved_cards: Query<Entity, (With<Card>, Changed<Parent>)>,
+	cards: Query<(&Parent, Option<&Children>)>,
+	mut slots: Query<&mut Slot>,
 ) {
-	for dropped_card in dropped_cards.iter() {
-		let mut cards_in_pile = VecDeque::new();
+	for moved_card in moved_cards.iter() {
+		let mut cards_in_stack = VecDeque::new();
 		
 		// Add ancestors
-		let mut current = dropped_card;
-		while let Ok((_, parent, _)) = cards.get(current) {
-			cards_in_pile.push_front(current);
+		let mut current = moved_card;
+		while let Ok((parent, _)) = cards.get(current) {
+			cards_in_stack.push_front(current);
 			current = parent.get();
 		}
 		
-		let top = current;
+		let slot = slots.get_mut(current);
 		
 		// Add descendents
-		let mut current = dropped_card;
-		while let Ok((_, _, Some(children))) = cards.get(current) {
+		let mut current = moved_card;
+		while let Ok((_, Some(children))) = cards.get(current) {
 			assert_eq!(children.len(), 1, "Cards shouldn't have multiple children");
 			// Doesn't check whether the child is actually a card, probably not necessary
-			cards_in_pile.push_back(children[0]);
+			cards_in_stack.push_back(children[0]);
 			current = children[0];
 		}
 		
-		for card in cards_in_pile.iter().skip(1) {
-			let (mut transform, _, _) = cards.get_mut(*card).expect("The entity originates from the same query");
-			transform.translation = Vec3::new(0.0, -50.0, 1.0);
+		if let Ok(mut slot) = slot {
+			slot.stack = cards_in_stack.into();
+		}
+	}
+}
+
+fn resize_stack(
+	changed_slots: Query<&Slot, Changed<Slot>>,
+	mut cards: Query<&mut Transform, With<Card>>,
+) {
+	for changed_slot in changed_slots.iter() {
+		let stack_size = changed_slot.stack.len();
+		let distance = (1000.0 / stack_size as f32).clamp(0.0, 100.0);
+		
+		if let Some(&first) = changed_slot.stack.first() {
+			let mut transform = cards.get_mut(first).expect("Slot::stack should only contain cards");
+			transform.translation = Vec3::new(0.0, 0.0, 1.0);
 		}
 		
-		if slots.get(top).is_ok() {
-			let last_card = cards_in_pile.front()
-				.expect("At least one card must exist, as this function was called for it (unless it doesn't have a Transform)");
-			let (mut transform, _, _) = cards.get_mut(*last_card).expect("The entity originates from the same query");
-			transform.translation = Vec3::new(0.0, 0.0, 1.0);
+		for &card in changed_slot.stack.iter().skip(1) {
+			let mut transform = cards.get_mut(card).expect("Slot::stack should only contain cards");
+			transform.translation = Vec3::new(0.0, -distance, 1.0);
+		}
+	}
+}
+
+fn make_draggable(
+	changed_slots: Query<&Slot, Changed<Slot>>,
+	mut cards: Query<(&mut Draggable, &Card)>,
+) {
+	for changed_slot in changed_slots.iter() {
+		let Some(&top) = changed_slot.stack.last() else {
+			continue;
+		};
+		
+		let (mut draggable, &(mut prev_card)) = cards.get_mut(top).expect("Slot::stack should only contain cards");
+		draggable.0 = true;
+		
+		let mut is_draggable = true;
+		for &card in changed_slot.stack.iter().rev().skip(1) {
+			let (mut draggable, &card) = cards.get_mut(card).expect("Slot::stack should only contain cards");
+			
+			if dbg!(is_draggable) {
+				is_draggable = prev_card.suit == card.suit && prev_card.value.as_number() == card.value.as_number() - 1;
+			}
+			
+			draggable.0 = is_draggable;
+			prev_card = card;
 		}
 	}
 }

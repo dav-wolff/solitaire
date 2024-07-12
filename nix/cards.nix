@@ -17,9 +17,9 @@ in runCommand "${pname}-cards-${version}" {
 		--plain \
 		--ace=plain \
 		--ace1="" --ace2="" \
-		--width="56mm" \
+		--width="70mm" \
 		--height="87mm" \
-		--w=190 \
+		--w=220 \
 		--h=360 \
 		--ph=58 \
 		--corner=12 \
@@ -31,9 +31,9 @@ in runCommand "${pname}-cards-${version}" {
 		--plain \
 		--ace=plain \
 		--ace1="" --ace2="" \
-		--width="56mm" \
+		--width="70mm" \
 		--height="87mm" \
-		--w=190 \
+		--w=220 \
 		--h=360 \
 		--ph=58 \
 		--corner=12

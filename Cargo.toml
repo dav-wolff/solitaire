@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 bevy_svg = { version = "0.13", git = "https://github.com/arnfaldur/bevy_svg.git" }
+rand = "0.8.5"
 strum = { version = "0.26", features = ["derive"] }
 
 [dependencies.bevy]

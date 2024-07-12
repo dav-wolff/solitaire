@@ -3,7 +3,7 @@ use bevy::{ecs::query::QuerySingleError, input::common_conditions::{input_just_p
 const CURSOR_Z: f32 = 500.0;
 
 #[derive(Component, Debug)]
-pub struct Draggable;
+pub struct Draggable(pub bool);
 
 #[derive(Component, Debug)]
 pub struct DropTarget;
@@ -22,6 +22,10 @@ impl DropEvent {
 	
 	pub fn target(&self) -> Entity {
 		self.target
+	}
+	
+	pub fn previous_parent(&self) -> Entity {
+		self.previous_parent
 	}
 	
 	pub fn attach_to_target(&self, commands: &mut Commands) {
@@ -105,22 +109,26 @@ fn drag(
 	mut commands: Commands,
 	cursor: Query<&Transform, With<Cursor>>,
 	mut drag_attach: Query<(Entity, &mut Transform), (With<DragAttach>, Without<Cursor>)>,
-	draggable: Query<(Entity, &Parent, &Transform, &GlobalTransform, &Aabb), (With<Draggable>, Without<Cursor>, Without<DragAttach>)>,
+	draggables: Query<(Entity, &Draggable, &Parent, &Transform, &GlobalTransform, &Aabb), (Without<Cursor>, Without<DragAttach>)>,
 ) {
 	let cursor_transform = cursor.single();
 	let cursor_translation = cursor_transform.translation;
 	let (drag_attach, mut drag_attach_transform) = drag_attach.single_mut();
 	
-	let Some((entity, parent, transform, relative_translation, _)) = draggable.iter()
-		.map(|(entity, parent, transform, global_transform, aabb)| {
+	let Some((entity, Draggable(draggable), parent, transform, relative_translation, _)) = draggables.iter()
+		.map(|(entity, draggable, parent, transform, global_transform, aabb)| {
 			let relative_translation = cursor_translation - global_transform.translation();
-			(entity, parent, transform, relative_translation, aabb)
+			(entity, draggable, parent, transform, relative_translation, aabb)
 		})
-		.filter(|(_, _, _, relative_translation, aabb)| inside_bounding_box(relative_translation.truncate(), **aabb))
-		.max_by_key(|(_, _, _, relative_translation, _)| FloatOrd(-relative_translation.z))
+		.filter(|(_, _, _, _, relative_translation, aabb)| inside_bounding_box(relative_translation.truncate(), **aabb))
+		.max_by_key(|(_, _, _, _, relative_translation, _)| FloatOrd(-relative_translation.z))
 	else {
 		return;
 	};
+	
+	if !draggable {
+		return;
+	}
 	
 	drag_attach_transform.translation = -relative_translation - transform.translation;
 	drag_attach_transform.translation.z = 0.0;

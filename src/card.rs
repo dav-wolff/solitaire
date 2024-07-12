@@ -29,10 +29,43 @@ pub enum Value {
 	King,
 }
 
+impl Value {
+	pub fn as_number(&self) -> u8 {
+		use Value::*;
+		match self {
+			Ace => 1,
+			Two => 2,
+			Three => 3,
+			Four => 4,
+			Five => 5,
+			Six => 6,
+			Seven => 7,
+			Eight => 8,
+			Nine => 9,
+			Ten => 10,
+			Jack => 11,
+			Queen => 12,
+			King => 13,
+		}
+	}
+}
+
 #[derive(Component, Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub struct Card {
 	pub suit: Suit,
 	pub value: Value,
+}
+
+impl Card {
+	pub fn deck() -> impl Iterator<Item=Card> {
+		Suit::iter()
+			.flat_map(|suit| Value::iter()
+				.map(move |value| Card {
+					suit,
+					value,
+				})
+			)
+	}
 }
 
 fn asset_path(path: &Path, card: Card) -> PathBuf {
