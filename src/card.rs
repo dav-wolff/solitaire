@@ -2,7 +2,11 @@ use std::path::{Path, PathBuf};
 
 use bevy::{prelude::*, utils::HashMap};
 use bevy_svg::prelude::*;
+use cache_bust::asset;
 use strum::{EnumIter, IntoEnumIterator};
+
+mod asset_names;
+use asset_names::*;
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, EnumIter, Debug)]
 pub enum Suit {
@@ -68,36 +72,6 @@ impl Card {
 	}
 }
 
-fn asset_path(path: &Path, card: Card) -> PathBuf {
-	use Suit::*;
-	use Value::*;
-	
-	let suit_char = match card.suit {
-		Spades => 'S',
-		Clubs => 'C',
-		Diamonds => 'D',
-		Hearts => 'H',
-	};
-	
-	let value_char = match card.value {
-		Ace => 'A',
-		Two => '2',
-		Three => '3',
-		Four => '4',
-		Five => '5',
-		Six => '6',
-		Seven => '7',
-		Eight => '8',
-		Nine => '9',
-		Ten => 'T',
-		Jack => 'J',
-		Queen => 'Q',
-		King => 'K',
-	};
-	
-	path.join(format!("{value_char}{suit_char}.svg"))
-}
-
 fn load_card_assets(path: &Path, asset_server: &AssetServer) -> HashMap<Card, Handle<Svg>> {
 	Suit::iter()
 		.flat_map(|suit| {
@@ -107,7 +81,7 @@ fn load_card_assets(path: &Path, asset_server: &AssetServer) -> HashMap<Card, Ha
 					value,
 				})
 		})
-		.map(|card| (card, asset_server.load(asset_path(path, card))))
+		.map(|card| (card, asset_server.load(path.join(asset_name(card)))))
 		.collect()
 }
 
@@ -142,9 +116,9 @@ pub struct CardAssetsPlugin(pub PathBuf);
 impl Plugin for CardAssetsPlugin {
 	fn build(&self, app: &mut App) {
 		let asset_server: &AssetServer = app.world.get_resource().expect("AssetServer must be initialized");
-		let slot = asset_server.load(self.0.join("slot.svg"));
-		let black_back = asset_server.load(self.0.join("1B.svg"));
-		let red_back = asset_server.load(self.0.join("2B.svg"));
+		let slot = asset_server.load(self.0.join(asset!("slot.svg")));
+		let black_back = asset_server.load(self.0.join(asset!("1B.svg")));
+		let red_back = asset_server.load(self.0.join(asset!("2B.svg")));
 		
 		let card_assets = CardAssets {
 			cards: load_card_assets(&self.0, asset_server),

@@ -17,6 +17,12 @@
 			url = "github:nix-community/fenix";
 			inputs.nixpkgs.follows = "nixpkgs";
 		};
+		
+		cache_bust = {
+			url = "github:dav-wolff/cache_bust";
+			inputs.nixpkgs.follows = "nixpkgs";
+			inputs.fenix.follows = "fenix";
+		};
 	};
 	
 	outputs = { self, nixpkgs, flake-utils, ... } @ inputs: let
@@ -36,6 +42,10 @@
 		overlays = {
 			svg-playing-cards = final: prev: {
 				svg-playing-cards = prev.callPackage ./nix/svg_playing_cards.nix {};
+			};
+			
+			cachebust = final: prev: {
+				cachebust = inputs.cache_bust.packages.${prev.system}.cli;
 			};
 			
 			fenix = final: prev: {
@@ -61,6 +71,7 @@
 			
 			default = nixpkgs.lib.composeManyExtensions (with self.overlays; [
 				svg-playing-cards
+				cachebust
 				fenix
 				solitaire
 			]);
@@ -101,6 +112,8 @@
 					LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath pkgs.solitaire.native.libraries;
 					
 					SOLITAIRE_CARDS_LOCATION = pkgs.solitaire.cards;
+					CACHE_BUST_ASSETS_DIR = pkgs.solitaire.cards;
+					CACHE_BUST_SKIP_HASHING = 1;
 				};
 			}
 		);

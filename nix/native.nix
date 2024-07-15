@@ -38,6 +38,8 @@ let
 		cargoExtraArgs = "--locked --no-default-features --features native";
 		
 		SOLITAIRE_CARDS_LOCATION = solitaire.cards;
+		CACHE_BUST_ASSETS_DIR = solitaire.cards;
+		CACHE_BUST_SKIP_HASHING = 1;
 	};
 	
 	cargoArtifacts = craneLib.buildDepsOnly commonArgs;
