@@ -45,6 +45,7 @@ fn main() {
 		.add_systems(Update, (
 			resize_stack,
 			make_draggable,
+			check_finished,
 		))
 		.run();
 }
@@ -95,7 +96,7 @@ fn spawn_cards(mut commands: Commands, card_assets: Res<CardAssets>) {
 						translation: (0.0, 0.0, 1.0).into(),
 						..Default::default()
 					},
-					svg: card_svg.clone(),
+					svg: card_svg,
 					..Default::default()
 				},
 				card,
@@ -219,12 +220,53 @@ fn make_draggable(
 		for &card in changed_slot.stack.iter().rev().skip(1) {
 			let (mut draggable, &card) = cards.get_mut(card).expect("Slot::stack should only contain cards");
 			
-			if dbg!(is_draggable) {
+			if is_draggable {
 				is_draggable = prev_card.suit == card.suit && prev_card.value.as_number() == card.value.as_number() - 1;
 			}
 			
 			draggable.0 = is_draggable;
 			prev_card = card;
 		}
+	}
+}
+
+fn check_finished(
+	mut commands: Commands,
+	card_assets: Res<CardAssets>,
+	changed_slots: Query<(&Slot, Entity), Changed<Slot>>,
+	mut cards: Query<(&Card, &mut Handle<Svg>, &mut Transform)>,
+) {
+	'outer:
+	for (changed_slot, slot_entity) in changed_slots.iter() {
+		if changed_slot.stack.len() < 13 {
+			continue;
+		}
+		
+		let cards_in_stack: Vec<_> = changed_slot.stack.iter()
+			.map(|&card| cards.get(card).expect("Slot::stack should only contain cards"))
+			.collect();
+		
+		for cards in cards_in_stack.windows(2) {
+			let [(top_card, _, _), (bottom_card, _, _)] = cards else {
+				panic!("windows should return 2 items");
+			};
+			
+			if top_card.suit != bottom_card.suit || top_card.value.as_number() != bottom_card.value.as_number() + 1 {
+				continue 'outer;
+			}
+		}
+		
+		// Stack is completed
+		commands.entity(slot_entity).remove::<DropTarget>();
+		
+		for &card_entity in changed_slot.stack.iter() {
+			let (card, mut svg, mut transform) = cards.get_mut(card_entity).expect("Slot::stack should only contain cards");
+			*svg = card_assets.get_back(card.suit);
+			transform.translation = Vec3::new(0.0, -10.0, 1.0);
+			commands.entity(card_entity).remove::<(Draggable, DropTarget)>();
+		}
+		
+		let (_, _, mut top_transform) = cards.get_mut(changed_slot.stack[0]).expect("Slot::stack should only contain cards");
+		top_transform.translation = Vec3::new(0.0, 0.0, 1.0);
 	}
 }

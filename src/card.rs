@@ -115,11 +115,21 @@ fn load_card_assets(path: &Path, asset_server: &AssetServer) -> HashMap<Card, Ha
 pub struct CardAssets {
 	cards: HashMap<Card, Handle<Svg>>,
 	slot: Handle<Svg>,
+	black_back: Handle<Svg>,
+	red_back: Handle<Svg>,
 }
 
 impl CardAssets {
 	pub fn get(&self, card: Card) -> Handle<Svg> {
 		self.cards.get(&card).cloned().expect("All possible cards have been inserted")
+	}
+	
+	pub fn get_back(&self, suit: Suit) -> Handle<Svg> {
+		use Suit::*;
+		match suit {
+			Spades | Clubs => self.black_back.clone(),
+			Diamonds | Hearts => self.red_back.clone(),
+		}
 	}
 	
 	pub fn slot(&self) -> Handle<Svg> {
@@ -132,11 +142,15 @@ pub struct CardAssetsPlugin(pub PathBuf);
 impl Plugin for CardAssetsPlugin {
 	fn build(&self, app: &mut App) {
 		let asset_server: &AssetServer = app.world.get_resource().expect("AssetServer must be initialized");
-		let slot_asset = asset_server.load(self.0.join("slot.svg"));
+		let slot = asset_server.load(self.0.join("slot.svg"));
+		let black_back = asset_server.load(self.0.join("1B.svg"));
+		let red_back = asset_server.load(self.0.join("2B.svg"));
 		
 		let card_assets = CardAssets {
 			cards: load_card_assets(&self.0, asset_server),
-			slot: slot_asset,
+			slot,
+			black_back,
+			red_back,
 		};
 		
 		app.insert_resource(card_assets);

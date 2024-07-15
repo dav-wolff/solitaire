@@ -36,9 +36,10 @@ in runCommand "${pname}-cards-${version}" {
 		--w=220 \
 		--h=360 \
 		--ph=58 \
-		--corner=12
-	rm $out/1B.svg
-	rm $out/2B.svg
+		--corner=12 \
+		--back=AA
+	# rm $out/1B.svg
+	# rm $out/2B.svg
 	rm $out/1J.svg
 	rm $out/2J.svg
 ''
