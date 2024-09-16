@@ -10,7 +10,7 @@
 let
 	src = with lib; cleanSourceWith {
 		src = craneLib.path ../.;
-		filter = path: type: 
+		filter = path: type:
 			hasInfix "/site/" path
 			|| (craneLib.filterCargoSources path type);
 	};

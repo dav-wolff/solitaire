@@ -8,13 +8,14 @@
 , libxkbcommon
 , wayland
 , udev
-, solitaire
+, cards
 }:
 
 let
 	common = callPackage ./common.nix {
 		inherit craneLib;
 	};
+	inherit (common) pname;
 	
 	libraries = [
 		udev
@@ -37,8 +38,8 @@ let
 		
 		cargoExtraArgs = "--locked --no-default-features --features native";
 		
-		SOLITAIRE_CARDS_LOCATION = solitaire.cards;
-		CACHE_BUST_ASSETS_DIR = solitaire.cards;
+		SOLITAIRE_CARDS_LOCATION = cards;
+		CACHE_BUST_ASSETS_DIR = cards;
 		CACHE_BUST_SKIP_HASHING = 1;
 	};
 	
@@ -62,6 +63,6 @@ in craneLib.buildPackage (commonArgs // {
 	inherit cargoArtifacts;
 	
 	postFixup = lib.optionalString stdenv.isLinux ''
-		patchelf $out/bin/solitaire --set-rpath ${lib.makeLibraryPath libraries}
+		patchelf $out/bin/${pname} --set-rpath ${lib.makeLibraryPath libraries}
 	'';
 })

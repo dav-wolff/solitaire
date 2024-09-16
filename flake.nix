@@ -27,16 +27,16 @@
 	
 	outputs = { self, nixpkgs, flake-utils, ... } @ inputs: let
 		makeCraneLib = pkgs: let
-				fenixNative = pkgs.fenix.complete; # nightly
-				fenixWasm = pkgs.fenix.targets.wasm32-unknown-unknown.latest; # nightly
-				fenixToolchain = pkgs.fenix.combine [
-					fenixNative.rustc
-					fenixNative.rust-src
-					fenixNative.cargo
-					fenixNative.rust-docs
-					fenixNative.clippy
-					fenixWasm.rust-std
-				];
+			fenixNative = pkgs.fenix.complete; # nightly
+			fenixWasm = pkgs.fenix.targets.wasm32-unknown-unknown.latest; # nightly
+			fenixToolchain = pkgs.fenix.combine [
+				fenixNative.rustc
+				fenixNative.rust-src
+				fenixNative.cargo
+				fenixNative.rust-docs
+				fenixNative.clippy
+				fenixWasm.rust-std
+			];
 		in (inputs.crane.mkLib pkgs).overrideToolchain fenixToolchain;
 	in {
 		overlays = {
@@ -53,20 +53,27 @@
 			};
 			
 			solitaire = final: prev: let
-				inherit (prev) callPackage;
 				craneLib = makeCraneLib final;
 			in {
-				solitaire = {
-					cards = callPackage ./nix/cards.nix {
+				solitaire = prev.lib.makeScope prev.newScope (self: {
+					cards = self.callPackage ./nix/cards.nix {
 						inherit craneLib;
 					};
-					native = callPackage ./nix/native.nix {
+					native = self.callPackage ./nix/native.nix {
 						inherit craneLib;
 					};
-					web = callPackage ./nix/web.nix {
+					web = self.callPackage ./nix/web.nix {
 						inherit craneLib;
 					};
-				};
+				});
+			};
+			
+			pinWasmBindgen = final: prev: {
+				solitaire = prev.solitaire.overrideScope (finalSolitaire: prevSolitaire: {
+					web = prevSolitaire.web.override {
+						inherit (nixpkgs.legacyPackages.${prev.system}) wasm-bindgen-cli;
+					};
+				});
 			};
 			
 			default = nixpkgs.lib.composeManyExtensions (with self.overlays; [
@@ -74,6 +81,7 @@
 				cachebust
 				fenix
 				solitaire
+				pinWasmBindgen
 			]);
 		};
 	} // flake-utils.lib.eachDefaultSystem (system:
